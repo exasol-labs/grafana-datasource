@@ -1,0 +1,19 @@
+apiVersion: 1
+
+datasources:
+  - name: 'exasol'
+    uid: 'exasol-e2e'
+    type: 'exasol-exasol-datasource'
+    access: proxy
+    isDefault: false
+    orgId: 1
+    version: 1
+    editable: true
+    jsonData:
+      databaseHost: '172.0.0.1'
+      databasePort: '8563'
+      user: 'sys'
+      schema: 'SYS'
+      databaseInsecureSkipVerify: true
+    secureJsonData:
+      password: 'exasol'

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "datasource",
+  "name": "Exasol",
+  "id": "exasol-exasol-datasource",
+  "metrics": true,
+  "annotations": true,
+  "alerting": true,
+  "backend": true,
+  "executable": "gpx_exasol",
+  "info": {
+    "description": "Exasol datasource plugin for Grafana. Execute SQL queries directly against Exasol databases.",
+    "author": {
+      "name": "Exasol"
+    },
+    "keywords": ["datasource", "exasol", "sql", "database"],
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [
+      {
+        "name": "sponsorship",
+        "url": "https://github.com/sponsors/exasol"
+      }
+    ],
+    "screenshots": [
+      {
+        "name": "Exasol query editor",
+        "path": "img/query-editor-overview.png"
+      }
+    ],
+    "version": "%VERSION%",
+    "updated": "%TODAY%"
+  },
+  "dependencies": {
+    "grafanaDependency": ">=10.4.0",
+    "plugins": []
+  }
+}
