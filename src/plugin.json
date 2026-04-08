@@ -27,7 +27,7 @@
     "screenshots": [
       {
         "name": "Exasol query editor",
-        "path": "img/query-editor-overview.png"
+        "path": "img/query-editor-overview.jpg"
       }
     ],
     "version": "%VERSION%",

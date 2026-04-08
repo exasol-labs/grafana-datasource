@@ -1,5 +1,7 @@
 import { test, expect } from '@grafana/plugin-e2e';
 
+const runQueryE2E = process.env.RUN_QUERY_E2E === 'true';
+
 test('smoke: should render config editor', async ({ createDataSourceConfigPage, readProvisionedDataSource, page }) => {
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
   await createDataSourceConfigPage({ type: ds.type });
@@ -11,6 +13,8 @@ test('smoke: should render config editor', async ({ createDataSourceConfigPage, 
 });
 
 test('provisioned datasource health check succeeds', async ({ readProvisionedDataSource, page }) => {
+  test.skip(!runQueryE2E, 'Requires RUN_QUERY_E2E=true and a reachable Exasol test database.');
+
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
   const response = await page.request.get(`/api/datasources/uid/${ds.uid}/health`);
   expect(response.ok()).toBeTruthy();

@@ -250,17 +250,15 @@ func (d *Datasource) query(ctx context.Context, query backend.DataQuery) backend
 		}
 	}
 
-	// PostgreSQL-style behavior:
-	// - Table format: return raw typed columns without time-series shaping.
-	// - Time series format: require time + numeric columns and return wide frame.
-	if qm.Format == queryFormatTable {
-		for _, field := range fields {
-			frame.Fields = append(frame.Fields, field)
+		// PostgreSQL-style behavior:
+		// - Table format: return raw typed columns without time-series shaping.
+		// - Time series format: require time + numeric columns and return wide frame.
+		if qm.Format == queryFormatTable {
+			frame.Fields = append(frame.Fields, fields...)
+			response.Frames = append(response.Frames, frame)
+			log.DefaultLogger.Debug("Frame configured as table format", "fields", len(frame.Fields))
+			return response
 		}
-		response.Frames = append(response.Frames, frame)
-		log.DefaultLogger.Debug("Frame configured as table format", "fields", len(frame.Fields))
-		return response
-	}
 
 	// No rows in range should produce empty data instead of type-shape errors.
 	// This is common for alerting windows and should map to NoData behavior upstream.
