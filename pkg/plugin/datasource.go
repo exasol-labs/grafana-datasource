@@ -59,7 +59,9 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 	pingCtx, cancel := context.WithTimeout(context.Background(), startupPingTimeout)
 	defer cancel()
 	if err := db.PingContext(pingCtx); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			log.DefaultLogger.Warn("Failed to close Exasol database after ping failure", "error", closeErr.Error())
+		}
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -80,7 +82,10 @@ type Datasource struct {
 // be disposed and a new one will be created using NewDatasource factory function.
 func (d *Datasource) Dispose() {
 	if d.db != nil {
-		d.db.Close()
+		if err := d.db.Close(); err != nil {
+			log.DefaultLogger.Warn("Failed to close Exasol database connection", "error", err.Error())
+			return
+		}
 		log.DefaultLogger.Info("Closed Exasol database connection")
 	}
 }
@@ -151,7 +156,11 @@ func (d *Datasource) query(ctx context.Context, query backend.DataQuery) backend
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to get database connection: %v", err.Error()))
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.DefaultLogger.Warn("Failed to close Exasol query connection", "error", err.Error())
+		}
+	}()
 
 	// Force UTC in session to avoid timezone drift between Grafana picker timestamps and Exasol rendering.
 	if _, err := conn.ExecContext(ctx, sessionTimeZoneUTC); err != nil {
@@ -163,7 +172,11 @@ func (d *Datasource) query(ctx context.Context, query backend.DataQuery) backend
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("query execution failed: %v", err.Error()))
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.DefaultLogger.Warn("Failed to close Exasol query rows", "error", err.Error())
+		}
+	}()
 
 	// Get column names
 	columns, err := rows.Columns()
