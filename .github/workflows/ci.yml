@@ -11,7 +11,7 @@ on:
       - main
 
 env:
-  ENABLE_E2E_IN_CI: 'false'
+  ENABLE_E2E_IN_CI: 'true'
 
 jobs:
   build:
@@ -201,7 +201,7 @@ jobs:
         uses: grafana/plugin-actions/playwright-gh-pages/upload-report-artifacts@upload-report-artifacts/v1.0.1
         if: ${{ always() && !cancelled() }}
         with:
-          upload-report: false
+          upload-report: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           test-outcome: ${{ steps.run-tests.outcome }}
 
@@ -233,8 +233,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          # required for playwright-gh-pages
-          persist-credentials: true
+          persist-credentials: false
       - name: Publish report
         uses: grafana/plugin-actions/playwright-gh-pages/deploy-report-pages@deploy-report-pages/v1.1.0
         with:
