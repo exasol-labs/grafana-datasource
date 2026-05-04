@@ -1,10 +1,13 @@
 services:
   grafana:
-    image: grafana/grafana:latest
+    container_name: 'exasol-exasol-datasource'
+    image: grafana/${GRAFANA_IMAGE:-grafana}:${GRAFANA_VERSION:-latest}
     ports:
       - "3000:3000"
     environment:
       - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=exasol-exasol-datasource
+      - GF_AUTH_ANONYMOUS_ENABLED=${ANONYMOUS_AUTH_ENABLED:-true}
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     volumes:
       - ./dist:/var/lib/grafana/plugins/exasol-exasol-datasource
       - ./provisioning:/etc/grafana/provisioning
