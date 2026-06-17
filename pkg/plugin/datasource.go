@@ -1,3 +1,7 @@
+// Package plugin implements the Grafana datasource backend for Exasol.
+// It handles query execution against the Exasol cluster, expands Grafana
+// SQL macros, converts result columns into typed Grafana data frames, and
+// pivots time-series queries into the wide-frame format expected by panels.
 package plugin
 
 import (
@@ -897,7 +901,7 @@ func hasNoRows(columnData [][]interface{}) bool {
 // The main use case for these health checks is the test button on the
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
-func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+func (d *Datasource) CheckHealth(ctx context.Context, _ *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 	if err := d.db.PingContext(ctx); err != nil {
 		log.DefaultLogger.Error("Health check ping failed", "error", err.Error())
 		return &backend.CheckHealthResult{

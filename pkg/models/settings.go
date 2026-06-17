@@ -1,3 +1,6 @@
+// Package models holds the datasource configuration types persisted by Grafana
+// and the unmarshaling logic that converts the JSON shape sent from the
+// ConfigEditor into typed settings consumed by the backend.
 package models
 
 import (
@@ -9,17 +12,21 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 
+// Defaults applied when the corresponding UI field is left blank.
 const (
 	DefaultExasolPort          = 8563
 	DefaultMaxOpenConns        = 10
 	DefaultMaxIdleConns        = 5
 	DefaultConnMaxLifetimeSecs = 14400
 	DefaultQueryTimeoutSecs    = 60
+
 	maxAllowedConns            = 100
 	maxAllowedQueryTimeoutSecs = 3600
 	maxAllowedConnLifetimeSecs = 86400
 )
 
+// PluginSettings is the parsed, validated form of the per-datasource
+// configuration coming from Grafana.
 type PluginSettings struct {
 	DatabaseHost           string                `json:"databaseHost"`
 	Port                   int                   `json:"-"`
@@ -34,6 +41,8 @@ type PluginSettings struct {
 	Secrets                *SecretPluginSettings `json:"-"`
 }
 
+// SecretPluginSettings holds fields sourced from Grafana's encrypted
+// secureJsonData. Never logged or returned to the frontend.
 type SecretPluginSettings struct {
 	Password string `json:"password"`
 }
@@ -52,6 +61,9 @@ type jsonSettings struct {
 	QueryTimeoutSecs           string `json:"queryTimeoutSecs"`
 }
 
+// LoadPluginSettings parses Grafana's per-instance JSON + decrypted secrets
+// into a validated PluginSettings. Returns an error if a required field is
+// missing or an integer field is out of its allowed range.
 func LoadPluginSettings(source backend.DataSourceInstanceSettings) (*PluginSettings, error) {
 	var jsonData jsonSettings
 	if err := json.Unmarshal(source.JSONData, &jsonData); err != nil {
@@ -101,7 +113,7 @@ func LoadPluginSettings(source backend.DataSourceInstanceSettings) (*PluginSetti
 	}, nil
 }
 
-func parseIntField(raw string, def, min, max int, name string) (int, error) {
+func parseIntField(raw string, def, lo, hi int, name string) (int, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return def, nil
@@ -110,8 +122,8 @@ func parseIntField(raw string, def, min, max int, name string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid %s: %w", name, err)
 	}
-	if v < min || v > max {
-		return 0, fmt.Errorf("invalid %s: must be between %d and %d", name, min, max)
+	if v < lo || v > hi {
+		return 0, fmt.Errorf("invalid %s: must be between %d and %d", name, lo, hi)
 	}
 	return v, nil
 }

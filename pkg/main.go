@@ -1,3 +1,6 @@
+// Command gpx_exasol is the backend executable for the Exasol Grafana datasource plugin.
+// It is invoked by Grafana over the plugin SDK gRPC bridge and delegates request
+// handling to the plugin package.
 package main
 
 import (
