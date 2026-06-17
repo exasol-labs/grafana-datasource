@@ -4,12 +4,17 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/gtime"
 	"github.com/grafana/grafana-plugin-sdk-go/data/sqlutil"
 )
 
-const exasolEpochAnchor = "TIMESTAMP '1970-01-01 00:00:00'"
+const (
+	exasolEpochAnchor      = "TIMESTAMP '1970-01-01 00:00:00'"
+	defaultIntervalSeconds = 1
+)
 
 type exasolInterval struct {
 	raw   string
@@ -18,12 +23,16 @@ type exasolInterval struct {
 }
 
 var exasolMacros = sqlutil.Macros{
-	"time":           exasolMacro("time"),
-	"timeFilter":     exasolMacro("timeFilter"),
-	"timeFrom":       exasolMacro("timeFrom"),
-	"timeTo":         exasolMacro("timeTo"),
-	"timeGroup":      exasolMacro("timeGroup"),
-	"timeGroupAlias": exasolMacro("timeGroupAlias"),
+	"time":            exasolMacro("time"),
+	"timeFilter":      exasolMacro("timeFilter"),
+	"timeFrom":        exasolMacro("timeFrom"),
+	"timeTo":          exasolMacro("timeTo"),
+	"timeGroup":       exasolMacro("timeGroup"),
+	"timeGroupAlias":  exasolMacro("timeGroupAlias"),
+	"interval":        exasolMacro("interval"),
+	"interval_ms":     exasolMacro("interval_ms"),
+	"unixEpochFilter": exasolMacro("unixEpochFilter"),
+	"unixEpochGroup":  exasolMacro("unixEpochGroup"),
 }
 
 func interpolateQuery(rawSQL string, query backend.DataQuery) (string, error) {
@@ -72,9 +81,74 @@ func evaluateExasolMacro(query *sqlutil.Query, name string, args []string) (stri
 			return "", err
 		}
 		return groupExpr + ` AS "time"`, nil
+	case "interval":
+		return macroExasolInterval(query), nil
+	case "interval_ms":
+		return macroExasolIntervalMS(query), nil
+	case "unixEpochFilter":
+		return macroExasolUnixEpochFilter(query, args)
+	case "unixEpochGroup":
+		return macroExasolUnixEpochGroup(args)
 	default:
 		return "", fmt.Errorf("unknown macro %q", name)
 	}
+}
+
+// macroExasolInterval renders the dashboard/alert interval as a human string
+// (e.g. "5m", "1h"). Falls back to "1s" when the SDK passes a zero interval
+// (common for alert evaluation without a dashboard context).
+func macroExasolInterval(query *sqlutil.Query) string {
+	if query.Interval <= 0 {
+		return fmt.Sprintf("%ds", defaultIntervalSeconds)
+	}
+	return gtime.FormatInterval(query.Interval)
+}
+
+// macroExasolIntervalMS renders the dashboard/alert interval as integer
+// milliseconds. Falls back to 1000 (1 second) on a zero interval.
+func macroExasolIntervalMS(query *sqlutil.Query) string {
+	if query.Interval <= 0 {
+		return strconv.FormatInt(int64(time.Second/time.Millisecond), 10)
+	}
+	return strconv.FormatInt(query.Interval.Milliseconds(), 10)
+}
+
+// macroExasolUnixEpochFilter expands `$__unixEpochFilter(col)` to a numeric
+// range over Unix epoch seconds. Useful when the column stores epoch as
+// DECIMAL/INTEGER rather than a native TIMESTAMP.
+func macroExasolUnixEpochFilter(query *sqlutil.Query, args []string) (string, error) {
+	columnExpr, err := macroTimeColumnArg(args, "unixEpochFilter")
+	if err != nil {
+		return "", err
+	}
+	from := query.TimeRange.From.Unix()
+	to := query.TimeRange.To.Unix()
+	return fmt.Sprintf("%s >= %d AND %s <= %d", columnExpr, from, columnExpr, to), nil
+}
+
+// macroExasolUnixEpochGroup buckets a numeric epoch column by `interval` seconds.
+// Equivalent to FLOOR(col / N) * N for the second-resolution bucket size.
+func macroExasolUnixEpochGroup(args []string) (string, error) {
+	if len(args) != 2 && len(args) != 3 {
+		return "", fmt.Errorf("%w: expected 2 or 3 arguments, received %d", sqlutil.ErrorBadArgumentCount, len(args))
+	}
+	columnExpr, err := macroTimeColumnArg(args[:1], "unixEpochGroup")
+	if err != nil {
+		return "", err
+	}
+	interval, err := parseExasolInterval(args[1])
+	if err != nil {
+		return "", err
+	}
+	bucketMillis, err := interval.fixedMillis()
+	if err != nil {
+		return "", err
+	}
+	bucketSeconds := bucketMillis / 1000
+	if bucketSeconds <= 0 {
+		return "", fmt.Errorf("unixEpochGroup requires a bucket of at least 1 second, got %q", args[1])
+	}
+	return fmt.Sprintf("FLOOR(%s / %d) * %d", columnExpr, bucketSeconds, bucketSeconds), nil
 }
 
 func macroExasolBoundary(args []string, boundaryExpr string, operator string, macroName string) (string, error) {

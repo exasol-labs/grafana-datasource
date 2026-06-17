@@ -333,23 +333,23 @@ func TestConvertToTypedNilFieldByDBType(t *testing.T) {
 		decimalPrecision int64
 		decimalScale     int64
 		hasDecimalMeta   bool
-		format           string
 		expectedType     data.FieldType
 	}{
-		{name: "timestamp", dbType: "TIMESTAMP", format: queryFormatTable, expectedType: data.FieldTypeNullableTime},
-		{name: "date", dbType: "DATE", format: queryFormatTable, expectedType: data.FieldTypeNullableTime},
-		{name: "decimal int", dbType: "DECIMAL", decimalPrecision: 9, decimalScale: 0, hasDecimalMeta: true, format: queryFormatTable, expectedType: data.FieldTypeNullableInt64},
-		{name: "decimal float", dbType: "DECIMAL", decimalPrecision: 9, decimalScale: 2, hasDecimalMeta: true, format: queryFormatTable, expectedType: data.FieldTypeNullableFloat64},
-		{name: "decimal high precision becomes string in table format", dbType: "DECIMAL", decimalPrecision: 30, decimalScale: 10, hasDecimalMeta: true, format: queryFormatTable, expectedType: data.FieldTypeNullableString},
-		{name: "decimal high precision stays float in time series format", dbType: "DECIMAL", decimalPrecision: 30, decimalScale: 10, hasDecimalMeta: true, format: queryFormatTimeSeries, expectedType: data.FieldTypeNullableFloat64},
-		{name: "double", dbType: "DOUBLE", format: queryFormatTable, expectedType: data.FieldTypeNullableFloat64},
-		{name: "boolean", dbType: "BOOLEAN", format: queryFormatTable, expectedType: data.FieldTypeNullableBool},
-		{name: "varchar", dbType: "VARCHAR", format: queryFormatTable, expectedType: data.FieldTypeNullableString},
+		{name: "timestamp", dbType: "TIMESTAMP", expectedType: data.FieldTypeNullableTime},
+		{name: "date", dbType: "DATE", expectedType: data.FieldTypeNullableTime},
+		{name: "decimal int fits int64", dbType: "DECIMAL", decimalPrecision: 9, decimalScale: 0, hasDecimalMeta: true, expectedType: data.FieldTypeNullableInt64},
+		{name: "decimal int at int64 boundary", dbType: "DECIMAL", decimalPrecision: 18, decimalScale: 0, hasDecimalMeta: true, expectedType: data.FieldTypeNullableInt64},
+		{name: "decimal int beyond int64 falls back to float", dbType: "DECIMAL", decimalPrecision: 19, decimalScale: 0, hasDecimalMeta: true, expectedType: data.FieldTypeNullableFloat64},
+		{name: "decimal with scale becomes float", dbType: "DECIMAL", decimalPrecision: 9, decimalScale: 2, hasDecimalMeta: true, expectedType: data.FieldTypeNullableFloat64},
+		{name: "decimal high precision stays float", dbType: "DECIMAL", decimalPrecision: 30, decimalScale: 10, hasDecimalMeta: true, expectedType: data.FieldTypeNullableFloat64},
+		{name: "double", dbType: "DOUBLE", expectedType: data.FieldTypeNullableFloat64},
+		{name: "boolean", dbType: "BOOLEAN", expectedType: data.FieldTypeNullableBool},
+		{name: "varchar", dbType: "VARCHAR", expectedType: data.FieldTypeNullableString},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			field := convertToTypedNilField("c", 3, tt.dbType, tt.decimalPrecision, tt.decimalScale, tt.hasDecimalMeta, tt.format)
+			field := convertToTypedNilField("c", 3, tt.dbType, tt.decimalPrecision, tt.decimalScale, tt.hasDecimalMeta)
 			if field.Type() != tt.expectedType {
 				t.Fatalf("expected field type %s, got %s", tt.expectedType, field.Type())
 			}
@@ -362,7 +362,7 @@ func TestConvertToTypedNilFieldByDBType(t *testing.T) {
 
 func TestBuildTypedFieldFromMetadataKeepsVarcharAsString(t *testing.T) {
 	values := []interface{}{"00123", "false", "2024-06-18"}
-	field := buildTypedFieldFromMetadata("code", values, "VARCHAR", 0, 0, false, queryFormatTable)
+	field := buildTypedFieldFromMetadata("code", values, "VARCHAR", 0, 0, false)
 	if field.Type() != data.FieldTypeNullableString {
 		t.Fatalf("expected varchar to stay string, got %s", field.Type())
 	}
@@ -373,7 +373,7 @@ func TestBuildTypedFieldFromMetadataKeepsVarcharAsString(t *testing.T) {
 
 func TestBuildTypedFieldFromMetadataUnknownTypeStaysString(t *testing.T) {
 	values := []interface{}{"1.9", "2.5"}
-	field := buildTypedFieldFromMetadata("metric", values, "UNKNOWN_TYPE", 0, 0, false, queryFormatTable)
+	field := buildTypedFieldFromMetadata("metric", values, "UNKNOWN_TYPE", 0, 0, false)
 	if field.Type() != data.FieldTypeNullableString {
 		t.Fatalf("expected unknown type to stay string, got %s", field.Type())
 	}
@@ -382,24 +382,21 @@ func TestBuildTypedFieldFromMetadataUnknownTypeStaysString(t *testing.T) {
 	}
 }
 
-func TestBuildTypedFieldFromMetadataHighPrecisionDecimalBecomesString(t *testing.T) {
+func TestBuildTypedFieldFromMetadataHighPrecisionDecimalIsFloat(t *testing.T) {
 	values := []interface{}{float64(1234567890123456.8)}
-	field := buildTypedFieldFromMetadata("amount", values, "DECIMAL", 30, 10, true, queryFormatTable)
-	if field.Type() != data.FieldTypeNullableString {
-		t.Fatalf("expected high precision decimal to stay string, got %s", field.Type())
-	}
-	if v, ok := field.ConcreteAt(0); !ok || v.(string) == "" {
-		t.Fatalf("expected decimal string value, got %#v", v)
-	}
-}
-
-func TestBuildTypedFieldFromMetadataHighPrecisionDecimalBecomesFloatInTimeSeries(t *testing.T) {
-	values := []interface{}{float64(1234567890123456.8)}
-	field := buildTypedFieldFromMetadata("amount", values, "DECIMAL", 30, 10, true, queryFormatTimeSeries)
+	field := buildTypedFieldFromMetadata("amount", values, "DECIMAL", 30, 10, true)
 	if field.Type() != data.FieldTypeNullableFloat64 {
-		t.Fatalf("expected high precision decimal to become float in time series, got %s", field.Type())
+		t.Fatalf("expected high precision decimal to be float64, got %s", field.Type())
 	}
 	if v, ok := field.ConcreteAt(0); !ok || v.(float64) != values[0].(float64) {
 		t.Fatalf("expected decimal float value, got %#v", v)
+	}
+}
+
+func TestBuildTypedFieldFromMetadataDecimalBeyondInt64Range(t *testing.T) {
+	values := []interface{}{float64(1e20)}
+	field := buildTypedFieldFromMetadata("big", values, "DECIMAL", 20, 0, true)
+	if field.Type() != data.FieldTypeNullableFloat64 {
+		t.Fatalf("expected DECIMAL(20,0) to fall back to float64, got %s", field.Type())
 	}
 }
