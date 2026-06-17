@@ -6,7 +6,7 @@
 
 Query Exasol directly from Grafana with native SQL — including Grafana time macros, time-series pivoting, alerting, and annotations.
 
-![Query editor](./src/img/query-editor-overview.jpg)
+![Query editor](./src/img/query-editor.png)
 
 ---
 

@@ -39,8 +39,16 @@
     ],
     "screenshots": [
       {
-        "name": "Exasol query editor",
-        "path": "img/query-editor-overview.jpg"
+        "name": "Datasource configuration",
+        "path": "img/config-editor.png"
+      },
+      {
+        "name": "Query editor with results",
+        "path": "img/query-editor.png"
+      },
+      {
+        "name": "Time-series query with $__timeGroupAlias",
+        "path": "img/time-series.png"
       }
     ],
     "version": "%VERSION%",
