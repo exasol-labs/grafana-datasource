@@ -1,7 +1,7 @@
 services:
   grafana:
     user: root
-    container_name: 'exasol-exasol-datasource'
+    container_name: 'exasol-datasource'
 
     build:
       context: .
@@ -13,13 +13,13 @@ services:
     ports:
       - 3000:3000/tcp
     volumes:
-      - ../dist:/var/lib/grafana/plugins/exasol-exasol-datasource
+      - ../dist:/var/lib/grafana/plugins/exasol-datasource
       - ../provisioning:/etc/grafana/provisioning
-      - ..:/root/exasol-exasol-datasource
+      - ..:/root/exasol-datasource
 
     environment:
       NODE_ENV: development
-      GF_LOG_FILTERS: plugin.exasol-exasol-datasource:debug
+      GF_LOG_FILTERS: plugin.exasol-datasource:debug
       GF_LOG_LEVEL: debug
       GF_DATAPROXY_LOGGING: 1
-      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: exasol-exasol-datasource
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: exasol-datasource

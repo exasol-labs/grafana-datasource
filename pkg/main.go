@@ -1,11 +1,14 @@
+// Command gpx_exasol is the backend executable for the Exasol Grafana datasource plugin.
+// It is invoked by Grafana over the plugin SDK gRPC bridge and delegates request
+// handling to the plugin package.
 package main
 
 import (
 	"os"
 
+	"github.com/exasol/exasol/pkg/plugin"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"github.com/exasol/exasol/pkg/plugin"
 )
 
 func main() {
@@ -17,7 +20,7 @@ func main() {
 	// from Grafana to create different instances of SampleDatasource (per datasource
 	// ID). When datasource configuration changed Dispose method will be called and
 	// new datasource instance created using NewSampleDatasource factory.
-	if err := datasource.Manage("exasol-exasol-datasource", plugin.NewDatasource, datasource.ManageOpts{}); err != nil {
+	if err := datasource.Manage("exasol-datasource", plugin.NewDatasource, datasource.ManageOpts{}); err != nil {
 		log.DefaultLogger.Error(err.Error())
 		os.Exit(1)
 	}

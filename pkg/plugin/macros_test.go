@@ -94,3 +94,51 @@ func TestInterpolateQuery_TimeGroupRejectsMultiMonthBucketing(t *testing.T) {
 	)
 	require.ErrorContains(t, err, `unsupported interval "2M": only 1M and 1y are supported for calendar bucketing`)
 }
+
+func TestInterpolateQuery_IntervalMacros(t *testing.T) {
+	q := testMacroQuery()
+	q.Interval = 5 * time.Minute
+
+	got, err := interpolateQuery(`SELECT $__interval AS i, $__interval_ms AS ims`, q)
+	require.NoError(t, err)
+	require.Equal(t, `SELECT 5m AS i, 300000 AS ims`, got)
+}
+
+func TestInterpolateQuery_IntervalFallback(t *testing.T) {
+	q := testMacroQuery()
+	q.Interval = 0
+
+	got, err := interpolateQuery(`SELECT $__interval AS i, $__interval_ms AS ims`, q)
+	require.NoError(t, err)
+	require.Equal(t, `SELECT 1s AS i, 1000 AS ims`, got)
+}
+
+func TestInterpolateQuery_UnixEpochFilter(t *testing.T) {
+	got, err := interpolateQuery(
+		`SELECT * FROM EVENTS WHERE $__unixEpochFilter(TS)`,
+		testMacroQuery(),
+	)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		`SELECT * FROM EVENTS WHERE TS >= 1700000000 AND TS <= 1700003600`,
+		got,
+	)
+}
+
+func TestInterpolateQuery_UnixEpochGroup(t *testing.T) {
+	got, err := interpolateQuery(
+		`SELECT $__unixEpochGroup(TS, '5m') AS bucket FROM EVENTS GROUP BY 1`,
+		testMacroQuery(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, `SELECT FLOOR(TS / 300) * 300 AS bucket FROM EVENTS GROUP BY 1`, got)
+}
+
+func TestInterpolateQuery_UnixEpochGroupRejectsSubSecondBucket(t *testing.T) {
+	_, err := interpolateQuery(
+		`SELECT $__unixEpochGroup(TS, '500ms') FROM EVENTS`,
+		testMacroQuery(),
+	)
+	require.ErrorContains(t, err, "unixEpochGroup requires a bucket of at least 1 second")
+}

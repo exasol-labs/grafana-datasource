@@ -1,191 +1,113 @@
-# Exasol Datasource Plugin for Grafana
+# Exasol Datasource for Grafana
 
-This plugin lets Grafana query Exasol directly via SQL.
+[![CI](https://github.com/exasol-labs/grafana-datasource/actions/workflows/ci.yml/badge.svg)](https://github.com/exasol-labs/grafana-datasource/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/exasol-labs/grafana-datasource?include_prereleases&sort=semver)](https://github.com/exasol-labs/grafana-datasource/releases)
 
-Plugin ID: `exasol-exasol-datasource`
+Query Exasol directly from Grafana with native SQL — including Grafana time macros, time-series pivoting, alerting, and annotations.
 
-Repository policy files:
-- [DISCLAIMER.md](./DISCLAIMER.md)
-- [SECURITY.md](./SECURITY.md)
-- [LICENSE](./LICENSE)
+![Query editor](./src/img/query-editor.png)
 
-## Prerequisites
+---
 
-- Node.js `>=22`
-- Go `>=1.24`
-- Docker and Docker Compose (for local Grafana in containers)
+## Install
 
-## Build the plugin
+> **Catalog submission is in progress.** Until the plugin is published, install it as an unsigned local plugin (see [DEVELOPMENT.md](./DEVELOPMENT.md#run-grafana-with-the-plugin-in-docker)).
 
-From this directory:
+Once published it will be installable from inside Grafana:
 
-```bash
-npm install
-npm run build
-npm run build:backend
-npm run package
-```
+1. Open **Connections → Add new connection**.
+2. Search for **Exasol** and click **Install**.
+3. Click **Add new data source** when the install completes.
 
-Notes:
+## Configure
 
-- `npm run build` builds frontend assets into `dist/`
-- `npm run build:backend` builds backend binaries for all target platforms into `dist/`
-- `npm run package` creates a validator-ready archive at `build/exasol-exasol-datasource-<version>.zip`
-- If you have `mage` installed, `mage -v` is equivalent
+In **Connections → Data sources → Add data source → Exasol**:
 
-To validate the packaged plugin locally:
+| Field | Notes |
+| --- | --- |
+| **Host** | Hostname or IP of the Exasol cluster |
+| **Port** | Defaults to `8563` |
+| **User** | Exasol login |
+| **Password** | Stored encrypted by Grafana |
+| **Schema** | Optional default schema for the session |
+| **Skip TLS verify** | Disable certificate validation. **Test environments only.** |
+| **Cert fingerprint** | Optional SHA-256 fingerprint to pin the server certificate. Recommended for self-signed clusters instead of disabling TLS entirely. |
+| **Max open conns** | Connection pool ceiling (default `10`) |
+| **Max idle conns** | Idle connections to keep around (default `5`) |
+| **Conn max lifetime (s)** | Recycle connections older than this (default `14400`) |
+| **Query timeout (s)** | Per-query timeout (default `60`) |
 
-```bash
-npm run validate:plugin
-```
+Click **Save & test** to verify connectivity.
 
-If you already rebuilt the archive and only want to validate the current root ZIP:
+## Query
 
-```bash
-npm run validate:plugin:local
-```
+Each panel query has a **Format** selector and a SQL editor.
 
-## Run Grafana with Docker and load this plugin
+### Table format
 
-Use a `docker-compose.yml` like this:
-
-```yaml
-services:
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=exasol-exasol-datasource
-    volumes:
-      - /Users/dren.daka/dev/exasol-grafana-second/dist:/var/lib/grafana/plugins/exasol-exasol-datasource
-```
-
-Start Grafana:
-
-```bash
-docker compose up -d
-```
-
-Then open `http://localhost:3000`.
-
-## Install into an already running Grafana container
-
-```bash
-docker exec -it <grafana_container> mkdir -p /var/lib/grafana/plugins/exasol-exasol-datasource
-docker cp dist/. <grafana_container>:/var/lib/grafana/plugins/exasol-exasol-datasource/
-docker restart <grafana_container>
-```
-
-Make sure the container was started with:
-
-```bash
--e GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=exasol-exasol-datasource
-```
-
-## Verify plugin load
-
-- In Grafana UI: `Administration -> Plugins` and search for `Exasol`
-- Or check logs:
-
-```bash
-docker logs <grafana_container> | grep exasol-exasol-datasource
-```
-
-## Configure datasource
-
-In `Connections -> Data sources -> Add data source -> Exasol`:
-
-- `Host` (for example `exasol` or `db.example.com`)
-- `Port` (`8563` by default)
-- `User`
-- `Password`
-- Optional: `Skip TLS Verify` for test environments only
-
-Click `Save & test`.
-
-In panel queries, choose the query `Format`:
-
-- `Table` (default): raw SQL results
-- `Time series`: requires at least one Exasol `DATE`/`TIMESTAMP` column and at least one numeric column, returned as wide time series
-
-Notes for `Time series` format:
-
-- String columns are treated as labels, not values
-- Queries with only `time` plus string columns are not valid time series; use `Table` format or Grafana annotations for event-style data
-- The plugin identifies time fields from Exasol column metadata, so the time column should come from a native temporal column
-
-## Supported macros
-
-The datasource supports a PostgreSQL-style subset of Grafana SQL macros for native Exasol temporal columns:
-
-- `$__time(column)`:
-  aliases a native temporal column as `"time"`
-- `$__timeFilter(column)`:
-  expands to a Grafana time-range predicate
-- `$__timeFrom()` and `$__timeTo()`:
-  expand to the dashboard time-range boundaries as Exasol timestamp expressions
-- `$__timeGroup(column, '5m'[, fill])`:
-  buckets a native temporal column by interval
-- `$__timeGroupAlias(column, '5m'[, fill])`:
-  same as `$__timeGroup`, but aliases the bucketed expression as `"time"`
-
-## How to use the macros
-
-Use the macros with native Exasol `DATE` or `TIMESTAMP` columns.
-
-Basic time filtering:
+Returns raw, typed columns. Use this when you want to render a table panel, populate a stat panel, or feed downstream Grafana transformations.
 
 ```sql
 SELECT
-  $__time(INTERVAL_START),
-  USERS_AVG,
-  USERS_MAX,
-  CLUSTER_NAME
-FROM EXA_USAGE_HOURLY
-WHERE $__timeFilter(INTERVAL_START)
-ORDER BY INTERVAL_START
+  USER_NAME,
+  USER_PRIORITY,
+  CREATED
+FROM EXA_ALL_USERS
+ORDER BY CREATED DESC
+LIMIT 100
 ```
 
-Time-series bucketing:
+### Time series format
 
-```sql
-SELECT
-  $__timeGroupAlias(INTERVAL_START, '5m'),
-  AVG(USERS_AVG) AS users_avg,
-  MAX(USERS_MAX) AS users_max,
-  CLUSTER_NAME
-FROM EXA_USAGE_HOURLY
-WHERE $__timeFilter(INTERVAL_START)
-GROUP BY 1, 4
-ORDER BY 1
-```
-
-Annotation-style events:
-
-```sql
-SELECT
-  $__time(MEASURE_TIME),
-  EVENT_TYPE AS text,
-  CLUSTER_NAME AS tags
-FROM EXA_SYSTEM_EVENTS
-WHERE $__timeFilter(MEASURE_TIME)
-ORDER BY MEASURE_TIME
-```
-
-Examples:
+Returns a wide-format frame with a time field plus one value field per series. The plugin auto-pivots: any non-time/non-numeric columns become **labels** that distinguish series.
 
 ```sql
 SELECT
   $__timeGroupAlias(MEASURE_TIME, '5m'),
-  AVG(USERS_AVG) AS value,
+  AVG(USERS_AVG) AS users_avg,
+  MAX(USERS_MAX) AS users_max,
   CLUSTER_NAME
 FROM EXA_USAGE_HOURLY
 WHERE $__timeFilter(MEASURE_TIME)
-GROUP BY 1, 3
+GROUP BY 1, CLUSTER_NAME
 ORDER BY 1
 ```
+
+Constraints:
+
+- The time column must be a native Exasol `DATE` / `TIMESTAMP`, or an alias produced by `$__time*` / `$__timeGroup*` / `$__unixEpochGroup`.
+- Queries must return at least one time column and one numeric column.
+- Series order is deterministic across runs (sorted by label key).
+
+## Macros
+
+| Macro | Expands to | Notes |
+| --- | --- | --- |
+| `$__time(col)` | `<col> AS "time"` | Aliases a native temporal column |
+| `$__timeFilter(col)` | `<col> >= <from> AND <col> <= <to>` | Time-range predicate using the panel's range |
+| `$__timeFrom()`, `$__timeTo()` | Range bounds | Optional column arg adds comparison operator |
+| `$__timeGroup(col, interval [, fill])` | Bucketing expression | Fixed: `ms/s/m/h/d/w`. Calendar: `1M`, `1y` |
+| `$__timeGroupAlias(col, interval [, fill])` | Same as `$__timeGroup` + `AS "time"` | Use in `SELECT` for time-series panels |
+| `$__interval`, `$__interval_ms` | Panel/alert interval | Defaults to `1s` / `1000` when no interval is supplied |
+| `$__unixEpochFilter(col)` | `<col> >= <fromSec> AND <col> <= <toSec>` | For columns storing Unix epoch as `DECIMAL` / `INTEGER` |
+| `$__unixEpochGroup(col, interval)` | `FLOOR(<col> / N) * N` | Numeric epoch bucketing; minimum 1-second buckets |
+
+For a richer set of example queries, see [`docs/examples.sql`](./docs/examples.sql).
+
+## Alerting
+
+Backend alerting is supported. Grafana resolves dashboard template variables before the query reaches the plugin; macros (`$__time*`, `$__interval*`, `$__unixEpoch*`) are then expanded server-side using the alert's evaluation window.
+
+Tips:
+
+- Use `$__timeFilter` (not literal timestamps) so the alert always evaluates against the rolling window.
+- For aggregated alerts, use `$__interval_ms` to make the GROUP BY bucket size scale with the alert frequency.
+- `$__time(col)` aliases the time column as `"time"`, which Grafana's alert engine prefers.
+
+## Annotations
+
+Annotation queries are supported via the standard query editor. Return rows with a temporal column plus `text` and/or `tags` aliases:
 
 ```sql
 SELECT
@@ -197,18 +119,16 @@ WHERE $__timeFilter(MEASURE_TIME)
 ORDER BY MEASURE_TIME
 ```
 
-Macro notes:
+## Plugin signing
 
-- Supported fixed-size grouping intervals are `ms`, `s`, `m`, `h`, `d`, and `w`
-- Calendar grouping is supported for `1M` and `1y`
-- Multi-month and multi-year buckets such as `2M` or `2y` are not supported
-- PostgreSQL unix-epoch macros such as `$__unixEpochFilter` are intentionally not implemented because this datasource treats native Exasol temporal types as time fields rather than numeric epoch columns
+This repository builds an unsigned plugin out of the box. Catalog distribution requires a Grafana access policy token; see [DEVELOPMENT.md](./DEVELOPMENT.md#releasing).
 
-## Development commands
+## Support
 
-```bash
-npm run dev
-npm run lint
-npm run test:ci
-go test ./...
-```
+- File bugs and feature requests on the [issue tracker](https://github.com/exasol-labs/grafana-datasource/issues).
+- Security disclosures: see [SECURITY.md](./SECURITY.md).
+- Contributing: see [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## License
+
+[MIT](./LICENSE). See [DISCLAIMER.md](./DISCLAIMER.md) for the project's warranty and support stance.

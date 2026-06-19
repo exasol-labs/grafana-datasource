@@ -1,3 +1,7 @@
+// Package plugin implements the Grafana datasource backend for Exasol.
+// It handles query execution against the Exasol cluster, expands Grafana
+// SQL macros, converts result columns into typed Grafana data frames, and
+// pivots time-series queries into the wide-frame format expected by panels.
 package plugin
 
 import (
@@ -5,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -28,8 +33,6 @@ var (
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 
-const startupPingTimeout = 5 * time.Second
-
 // NewDatasource creates a new datasource instance.
 func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	config, err := models.LoadPluginSettings(settings)
@@ -37,44 +40,47 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 		return nil, fmt.Errorf("failed to load plugin settings: %w", err)
 	}
 
-	// Create Exasol database connection
-	// Note: ValidateServerCertificate(true) = validate cert, ValidateServerCertificate(false) = skip validation
 	port := config.Port
 	if port == 0 {
-		port = 8563 // Default Exasol port
+		port = models.DefaultExasolPort
 	}
-	connectionString := exasol.NewConfig(config.User, config.Secrets.Password).
+
+	// ValidateServerCertificate(true) = validate cert, ValidateServerCertificate(false) = skip validation
+	builder := exasol.NewConfig(config.User, config.Secrets.Password).
 		Host(config.DatabaseHost).
 		Port(port).
 		Schema(config.Schema).
-		ValidateServerCertificate(!config.InsecureSkipVerify).
-		String()
+		ValidateServerCertificate(!config.InsecureSkipVerify)
+	if config.CertificateFingerprint != "" {
+		builder = builder.CertificateFingerprint(config.CertificateFingerprint)
+	}
+	connectionString := builder.String()
 
 	db, err := sql.Open("exasol", connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
 	}
 
-	// Test the connection with a timeout to avoid hanging startup on network issues.
-	pingCtx, cancel := context.WithTimeout(context.Background(), startupPingTimeout)
-	defer cancel()
-	if err := db.PingContext(pingCtx); err != nil {
-		if closeErr := db.Close(); closeErr != nil {
-			log.DefaultLogger.Warn("Failed to close Exasol database after ping failure", "error", closeErr.Error())
-		}
-		return nil, fmt.Errorf("failed to ping database: %w", err)
-	}
+	// Tune the pool to bound concurrency against the Exasol cluster.
+	db.SetMaxOpenConns(config.MaxOpenConns)
+	db.SetMaxIdleConns(config.MaxIdleConns)
+	db.SetConnMaxLifetime(time.Duration(config.ConnMaxLifetimeSecs) * time.Second)
 
-	log.DefaultLogger.Info("Successfully connected to Exasol database", "host", config.DatabaseHost)
+	log.DefaultLogger.Info("Exasol datasource initialized",
+		"host", config.DatabaseHost,
+		"port", port,
+		"maxOpenConns", config.MaxOpenConns)
 
 	return &Datasource{
-		db: db,
+		db:               db,
+		queryTimeoutSecs: config.QueryTimeoutSecs,
 	}, nil
 }
 
 // Datasource is an Exasol datasource which can respond to data queries and reports its health.
 type Datasource struct {
-	db *sql.DB
+	db               *sql.DB
+	queryTimeoutSecs int
 }
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
@@ -151,10 +157,17 @@ func (d *Datasource) query(ctx context.Context, query backend.DataQuery) backend
 
 	log.DefaultLogger.Debug("Executing query", "query", expandedQuery)
 
+	if d.queryTimeoutSecs > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(d.queryTimeoutSecs)*time.Second)
+		defer cancel()
+	}
+
 	// Pin query execution to a single connection so session-level timezone applies to this query.
 	conn, err := d.db.Conn(ctx)
 	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to get database connection: %v", err.Error()))
+		log.DefaultLogger.Error("Failed to get Exasol connection", "error", err.Error())
+		return backend.ErrDataResponse(backend.StatusInternal, "failed to acquire database connection")
 	}
 	defer func() {
 		if err := conn.Close(); err != nil {
@@ -170,6 +183,7 @@ func (d *Datasource) query(ctx context.Context, query backend.DataQuery) backend
 	// Execute the SQL query
 	rows, err := conn.QueryContext(ctx, expandedQuery)
 	if err != nil {
+		log.DefaultLogger.Error("Exasol query failed", "error", err.Error())
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("query execution failed: %v", err.Error()))
 	}
 	defer func() {
@@ -181,13 +195,15 @@ func (d *Datasource) query(ctx context.Context, query backend.DataQuery) backend
 	// Get column names
 	columns, err := rows.Columns()
 	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to get columns: %v", err.Error()))
+		log.DefaultLogger.Error("Failed to read column names", "error", err.Error())
+		return backend.ErrDataResponse(backend.StatusInternal, "failed to read result columns")
 	}
 
 	// Get column types
 	columnTypes, err := rows.ColumnTypes()
 	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to get column types: %v", err.Error()))
+		log.DefaultLogger.Error("Failed to read column types", "error", err.Error())
+		return backend.ErrDataResponse(backend.StatusInternal, "failed to read result column types")
 	}
 
 	// Create data frame
@@ -210,7 +226,8 @@ func (d *Datasource) query(ctx context.Context, query backend.DataQuery) backend
 
 		// Scan the row
 		if err := rows.Scan(valuePtrs...); err != nil {
-			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to scan row: %v", err.Error()))
+			log.DefaultLogger.Error("Failed to scan row", "error", err.Error())
+			return backend.ErrDataResponse(backend.StatusInternal, "failed to scan result row")
 		}
 
 		// Append values to column data
@@ -220,7 +237,8 @@ func (d *Datasource) query(ctx context.Context, query backend.DataQuery) backend
 	}
 
 	if err := rows.Err(); err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("row iteration error: %v", err.Error()))
+		log.DefaultLogger.Error("Row iteration error", "error", err.Error())
+		return backend.ErrDataResponse(backend.StatusInternal, "error while iterating result rows")
 	}
 
 	// Identify field types for Wide format transformation
@@ -244,7 +262,7 @@ func (d *Datasource) query(ctx context.Context, query backend.DataQuery) backend
 				"sampleValues", columnData[i][:sampleSize])
 		}
 
-		field := convertToTypedField(colName, columnData[i], columnTypes[i], qm.Format)
+		field := convertToTypedField(colName, columnData[i], columnTypes[i])
 		fields[i] = field
 
 		// Classify columns for time series transformation based on converted field types.
@@ -263,15 +281,15 @@ func (d *Datasource) query(ctx context.Context, query backend.DataQuery) backend
 		}
 	}
 
-		// PostgreSQL-style behavior:
-		// - Table format: return raw typed columns without time-series shaping.
-		// - Time series format: require time + numeric columns and return wide frame.
-		if qm.Format == queryFormatTable {
-			frame.Fields = append(frame.Fields, fields...)
-			response.Frames = append(response.Frames, frame)
-			log.DefaultLogger.Debug("Frame configured as table format", "fields", len(frame.Fields))
-			return response
-		}
+	// PostgreSQL-style behavior:
+	// - Table format: return raw typed columns without time-series shaping.
+	// - Time series format: require time + numeric columns and return wide frame.
+	if qm.Format == queryFormatTable {
+		frame.Fields = append(frame.Fields, fields...)
+		response.Frames = append(response.Frames, frame)
+		log.DefaultLogger.Debug("Frame configured as table format", "fields", len(frame.Fields))
+		return response
+	}
 
 	// No rows in range should produce empty data instead of type-shape errors.
 	// This is common for alerting windows and should map to NoData behavior upstream.
@@ -387,8 +405,16 @@ func transformToWideFormat(columns []string, fields []*data.Field, columnData []
 	timeField := data.NewField(columns[timeColIndex], nil, timeValues)
 	frame.Fields = append(frame.Fields, timeField)
 
-	// 2. Add value fields for each series
-	for _, series := range seriesMap {
+	// 2. Add value fields for each series, ordered deterministically by series key
+	// so that panel colors and field order are stable across repeated queries.
+	seriesKeys := make([]string, 0, len(seriesMap))
+	for k := range seriesMap {
+		seriesKeys = append(seriesKeys, string(k))
+	}
+	sort.Strings(seriesKeys)
+
+	for _, sk := range seriesKeys {
+		series := seriesMap[seriesKey(sk)]
 		for valIdx, numIdx := range numericColIndices {
 			// Create value array aligned with time array
 			valueArray := make([]interface{}, len(timeValues))
@@ -440,7 +466,7 @@ func convertTypedFieldByType(name string, values []interface{}, fieldType data.F
 
 // Helper functions for type conversion
 
-func convertToTypedNilField(name string, rowCount int, dbTypeName string, decimalPrecision int64, decimalScale int64, hasDecimalMeta bool, format string) *data.Field {
+func convertToTypedNilField(name string, rowCount int, dbTypeName string, decimalPrecision int64, decimalScale int64, hasDecimalMeta bool) *data.Field {
 	normalizedDBType := strings.ToUpper(strings.TrimSpace(dbTypeName))
 
 	switch {
@@ -448,10 +474,7 @@ func convertToTypedNilField(name string, rowCount int, dbTypeName string, decima
 		return data.NewField(name, nil, make([]*time.Time, rowCount))
 
 	case strings.HasPrefix(normalizedDBType, "DECIMAL"):
-		if shouldPreserveDecimalAsString(decimalPrecision, decimalScale, hasDecimalMeta, format) {
-			return data.NewField(name, nil, make([]*string, rowCount))
-		}
-		if hasDecimalMeta && decimalScale == 0 {
+		if hasDecimalMeta && decimalScale == 0 && decimalPrecision <= 18 {
 			return data.NewField(name, nil, make([]*int64, rowCount))
 		}
 		return data.NewField(name, nil, make([]*float64, rowCount))
@@ -547,45 +570,20 @@ func parseExasolTimeValue(value interface{}) (*time.Time, bool) {
 	return nil, false
 }
 
-func convertToNumericField(name string, values []interface{}) *data.Field {
-	// Driver returns DECIMAL as int64 (scale=0) or float64 (scale>0)
-	// Check first non-nil value to determine type
-	for _, val := range values {
-		if val != nil {
-			if _, ok := val.(int64); ok {
-				return convertToIntField(name, values)
-			}
-			if _, ok := val.(float64); ok {
-				return convertToFloatField(name, values)
-			}
-			break
-		}
-	}
-	// Default to float if can't determine
-	return convertToFloatField(name, values)
-}
-
-func convertToDecimalField(name string, values []interface{}, decimalPrecision int64, decimalScale int64, hasDecimalMeta bool, format string) *data.Field {
-	if shouldPreserveDecimalAsString(decimalPrecision, decimalScale, hasDecimalMeta, format) {
-		return convertToStringField(name, values)
-	}
-	if hasDecimalMeta && decimalScale == 0 {
+// convertToDecimalField maps Exasol DECIMAL columns to numeric Grafana fields.
+//
+//   - scale == 0 and precision <= 18: int64 (fits losslessly)
+//   - everything else: float64
+//
+// For DECIMAL(p, 0) with p > 18 or DECIMAL(p, s) with s > 0, Exasol can carry
+// up to 36 digits which exceeds both int64 range and float64 mantissa precision.
+// We accept the precision loss here so that Grafana can format, sort, and chart
+// the values as numbers rather than strings.
+func convertToDecimalField(name string, values []interface{}, decimalPrecision int64, decimalScale int64, hasDecimalMeta bool) *data.Field {
+	if hasDecimalMeta && decimalScale == 0 && decimalPrecision <= 18 {
 		return convertToIntField(name, values)
 	}
-	return convertToNumericField(name, values)
-}
-
-func shouldPreserveDecimalAsString(decimalPrecision int64, decimalScale int64, hasDecimalMeta bool, format string) bool {
-	if !hasDecimalMeta {
-		return false
-	}
-	if format != queryFormatTable {
-		return false
-	}
-	if decimalScale == 0 {
-		return decimalPrecision > 18
-	}
-	return decimalPrecision > 15
+	return convertToFloatField(name, values)
 }
 
 func convertToFloatField(name string, values []interface{}) *data.Field {
@@ -830,7 +828,7 @@ func parseBoolString(value string) (bool, bool) {
 }
 
 // convertToTypedField converts a column of interface{} values to a typed data.Field
-func convertToTypedField(name string, values []interface{}, colType *sql.ColumnType, format string) *data.Field {
+func convertToTypedField(name string, values []interface{}, colType *sql.ColumnType) *data.Field {
 	dbTypeName := ""
 	var decimalPrecision int64
 	var decimalScale int64
@@ -844,12 +842,12 @@ func convertToTypedField(name string, values []interface{}, colType *sql.ColumnT
 		}
 	}
 
-	return buildTypedFieldFromMetadata(name, values, dbTypeName, decimalPrecision, decimalScale, hasDecimalMeta, format)
+	return buildTypedFieldFromMetadata(name, values, dbTypeName, decimalPrecision, decimalScale, hasDecimalMeta)
 }
 
-func buildTypedFieldFromMetadata(name string, values []interface{}, dbTypeName string, decimalPrecision int64, decimalScale int64, hasDecimalMeta bool, format string) *data.Field {
+func buildTypedFieldFromMetadata(name string, values []interface{}, dbTypeName string, decimalPrecision int64, decimalScale int64, hasDecimalMeta bool) *data.Field {
 	if len(values) == 0 {
-		return convertToTypedNilField(name, 0, dbTypeName, decimalPrecision, decimalScale, hasDecimalMeta, format)
+		return convertToTypedNilField(name, 0, dbTypeName, decimalPrecision, decimalScale, hasDecimalMeta)
 	}
 
 	hasNonNil := false
@@ -860,7 +858,7 @@ func buildTypedFieldFromMetadata(name string, values []interface{}, dbTypeName s
 		}
 	}
 	if !hasNonNil {
-		return convertToTypedNilField(name, len(values), dbTypeName, decimalPrecision, decimalScale, hasDecimalMeta, format)
+		return convertToTypedNilField(name, len(values), dbTypeName, decimalPrecision, decimalScale, hasDecimalMeta)
 	}
 
 	normalizedDBType := strings.ToUpper(strings.TrimSpace(dbTypeName))
@@ -870,7 +868,7 @@ func buildTypedFieldFromMetadata(name string, values []interface{}, dbTypeName s
 		return convertToTimeField(name, values)
 
 	case strings.HasPrefix(normalizedDBType, "DECIMAL"):
-		return convertToDecimalField(name, values, decimalPrecision, decimalScale, hasDecimalMeta, format)
+		return convertToDecimalField(name, values, decimalPrecision, decimalScale, hasDecimalMeta)
 
 	case strings.HasPrefix(normalizedDBType, "DOUBLE") ||
 		strings.HasPrefix(normalizedDBType, "FLOAT") ||
@@ -903,23 +901,22 @@ func hasNoRows(columnData [][]interface{}) bool {
 // The main use case for these health checks is the test button on the
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
-func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	res := &backend.CheckHealthResult{}
-
-	// Try to ping the database
+func (d *Datasource) CheckHealth(ctx context.Context, _ *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 	if err := d.db.PingContext(ctx); err != nil {
-		res.Status = backend.HealthStatusError
-		res.Message = fmt.Sprintf("Failed to connect to Exasol database: %v", err)
-		return res, nil
+		log.DefaultLogger.Error("Health check ping failed", "error", err.Error())
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: "Unable to reach Exasol database — check host, port, and credentials",
+		}, nil
 	}
 
-	// Try a simple query
 	var result int
-	err := d.db.QueryRowContext(ctx, "SELECT 1 FROM DUAL").Scan(&result)
-	if err != nil {
-		res.Status = backend.HealthStatusError
-		res.Message = fmt.Sprintf("Database query failed: %v", err)
-		return res, nil
+	if err := d.db.QueryRowContext(ctx, "SELECT 1").Scan(&result); err != nil {
+		log.DefaultLogger.Error("Health check query failed", "error", err.Error())
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: "Connected, but test query failed — verify user permissions",
+		}, nil
 	}
 
 	return &backend.CheckHealthResult{

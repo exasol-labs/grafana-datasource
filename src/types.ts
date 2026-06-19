@@ -3,12 +3,12 @@ import { DataQuery } from '@grafana/schema';
 
 export type QueryFormat = 'table' | 'time_series';
 
-export interface MyQuery extends DataQuery {
+export interface ExasolQuery extends DataQuery {
   queryText: string;
   format?: QueryFormat;
 }
 
-export const DEFAULT_QUERY: Partial<MyQuery> = {
+export const DEFAULT_QUERY: Partial<ExasolQuery> = {
   queryText: `SELECT
   $__time(INTERVAL_START),
   USERS_AVG,
@@ -32,17 +32,22 @@ export interface DataSourceResponse {
 /**
  * These are options configured for each DataSource instance
  */
-export interface MyDataSourceOptions extends DataSourceJsonData {
+export interface ExasolDataSourceOptions extends DataSourceJsonData {
   databaseHost?: string;
   databasePort?: string;
   databaseInsecureSkipVerify?: boolean;
+  databaseCertificateFingerprint?: string;
   schema?: string;
   user?: string;
+  maxOpenConns?: string;
+  maxIdleConns?: string;
+  connMaxLifetimeSecs?: string;
+  queryTimeoutSecs?: string;
 }
 
 /**
  * Value that is used in the backend, but never sent over HTTP to the frontend
  */
-export interface MySecureJsonData {
+export interface ExasolSecureJsonData {
   password?: string;
 }

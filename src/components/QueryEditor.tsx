@@ -1,15 +1,18 @@
-import React, { ChangeEvent } from 'react';
+import React, { ChangeEvent, useRef } from 'react';
 import { InlineField, Select, TextArea } from '@grafana/ui';
 import { QueryEditorProps, SelectableValue } from '@grafana/data';
 import { DataSource } from '../datasource';
-import { MyDataSourceOptions, MyQuery, QueryFormat } from '../types';
+import { ExasolDataSourceOptions, ExasolQuery, QueryFormat } from '../types';
 
-type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
+type Props = QueryEditorProps<DataSource, ExasolQuery, ExasolDataSourceOptions>;
 
 export function QueryEditor({ query, onChange, onRunQuery }: Props) {
+  const lastRunText = useRef<string | undefined>(query.queryText);
+
   const onFormatChange = (value: SelectableValue<QueryFormat>) => {
     onChange({ ...query, format: value.value ?? 'table' });
-    onRunQuery();
+    // Defer so React flushes the state update before Grafana re-runs.
+    setTimeout(onRunQuery, 0);
   };
 
   const onQueryTextChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -17,10 +20,12 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   };
 
   const onQueryTextBlur = () => {
-    // Execute query when user finishes editing
-    if (query.queryText && query.queryText.trim().length > 0) {
-      onRunQuery();
+    const text = query.queryText?.trim() ?? '';
+    if (text.length === 0 || text === lastRunText.current?.trim()) {
+      return;
     }
+    lastRunText.current = query.queryText;
+    onRunQuery();
   };
 
   const { queryText } = query;

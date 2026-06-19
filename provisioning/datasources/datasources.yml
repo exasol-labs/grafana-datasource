@@ -3,7 +3,7 @@ apiVersion: 1
 datasources:
   - name: 'exasol'
     uid: 'exasol-e2e'
-    type: 'exasol-exasol-datasource'
+    type: 'exasol-datasource'
     access: proxy
     isDefault: false
     orgId: 1

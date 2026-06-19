@@ -1,28 +1,27 @@
 import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
-import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY } from './types';
+import { ExasolQuery, ExasolDataSourceOptions, DEFAULT_QUERY } from './types';
 
-export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptions> {
+export class DataSource extends DataSourceWithBackend<ExasolQuery, ExasolDataSourceOptions> {
   annotations = {};
 
-  constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
+  constructor(instanceSettings: DataSourceInstanceSettings<ExasolDataSourceOptions>) {
     super(instanceSettings);
   }
 
-  getDefaultQuery(_: CoreApp): Partial<MyQuery> {
+  getDefaultQuery(_: CoreApp): Partial<ExasolQuery> {
     return DEFAULT_QUERY;
   }
 
-  applyTemplateVariables(query: MyQuery, scopedVars: ScopedVars) {
+  applyTemplateVariables(query: ExasolQuery, scopedVars: ScopedVars) {
     return {
       ...query,
       queryText: getTemplateSrv().replace(query.queryText, scopedVars),
     };
   }
 
-  filterQuery(query: MyQuery): boolean {
-    // if no query has been provided, prevent the query from being executed
-    return !!query.queryText;
+  filterQuery(query: ExasolQuery): boolean {
+    return !!query.queryText && query.queryText.trim().length > 0;
   }
 }
