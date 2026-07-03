@@ -27,7 +27,7 @@ provisioning/           Grafana provisioning fixtures for e2e
 npm install
 npm run build           # frontend → dist/
 npm run build:backend   # backend binaries for all platforms → dist/
-npm run package         # builds + zips to build/exasol-datasource-<version>.zip
+npm run package         # builds + zips to build/exasol-exasol-datasource-<version>.zip
 ```
 
 `mage -v` is equivalent to `npm run build:backend` if you have mage installed locally.
@@ -53,7 +53,7 @@ The relevant env vars:
 
 | Variable | Purpose |
 | --- | --- |
-| `GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=exasol-datasource` | Permit loading the unsigned local build |
+| `GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=exasol-exasol-datasource` | Permit loading the unsigned local build |
 | `GF_DEFAULT_APP_MODE=development` | Lets Grafana treat unsigned plugins as valid during dev |
 | `GF_PLUGINS_PLUGIN_ADMIN_ENABLED=true` | Keep the plugin catalog UI accessible |
 | `GF_PLUGINS_PLUGIN_ADMIN_EXTERNAL_MANAGE_ENABLED=false` | Disable the "manage via grafana.com" gate |
@@ -63,12 +63,12 @@ If a Save & Test inside the container needs to reach Exasol on your host, use `h
 ## Install into an already-running Grafana container
 
 ```bash
-docker exec -it <grafana_container> mkdir -p /var/lib/grafana/plugins/exasol-datasource
-docker cp dist/. <grafana_container>:/var/lib/grafana/plugins/exasol-datasource/
+docker exec -it <grafana_container> mkdir -p /var/lib/grafana/plugins/exasol-exasol-datasource
+docker cp dist/. <grafana_container>:/var/lib/grafana/plugins/exasol-exasol-datasource/
 docker restart <grafana_container>
 ```
 
-Make sure the container was started with `-e GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=exasol-datasource`.
+Make sure the container was started with `-e GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=exasol-exasol-datasource`.
 
 ## Verify the plugin is loaded
 
@@ -77,7 +77,7 @@ UI: **Administration → Plugins** and search "Exasol".
 Logs:
 
 ```bash
-docker logs <grafana_container> | grep exasol-datasource
+docker logs <grafana_container> | grep exasol-exasol-datasource
 ```
 
 ## Testing

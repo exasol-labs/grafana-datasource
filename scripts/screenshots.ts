@@ -27,9 +27,9 @@ async function findExasolDatasource(): Promise<DataSource> {
     throw new Error(`failed to list datasources: ${res.status}`);
   }
   const datasources = (await res.json()) as DataSource[];
-  const candidates = datasources.filter((ds) => ds.type === 'exasol-datasource');
+  const candidates = datasources.filter((ds) => ds.type === 'exasol-exasol-datasource');
   if (candidates.length === 0) {
-    throw new Error('no exasol-datasource instance found — configure one in Grafana first');
+    throw new Error('no exasol-exasol-datasource instance found — configure one in Grafana first');
   }
   // Prefer a non-e2e instance (user-configured), fall back to the first one.
   const preferred = candidates.find((ds) => ds.name !== 'exasol') ?? candidates[0];
