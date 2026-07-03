@@ -6,7 +6,7 @@ const runQueryE2E = process.env.RUN_QUERY_E2E === 'true';
 type QueryFormat = 'table' | 'time_series';
 
 async function runQuery(page: Page, queryText: string, format: QueryFormat, expectedHttpStatus = 200) {
-  const response = await page.request.post('/api/ds/query?ds_type=exasol-datasource&requestId=e2e', {
+  const response = await page.request.post('/api/ds/query?ds_type=exasol-exasol-datasource&requestId=e2e', {
     data: {
       queries: [
         {
@@ -14,7 +14,7 @@ async function runQuery(page: Page, queryText: string, format: QueryFormat, expe
           queryText,
           format,
           datasource: {
-            type: 'exasol-datasource',
+            type: 'exasol-exasol-datasource',
             uid: 'exasol-e2e',
           },
           intervalMs: 60000,
