@@ -1,5 +1,5 @@
 {
-  "name": "exasol-datasource",
+  "name": "exasol-exasol-datasource",
   "version": "1.0.0",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
@@ -14,7 +14,7 @@
     "package": "npm run build && npm run build:backend && ./scripts/package-plugin.sh",
     "package:archive": "./scripts/package-plugin.sh",
     "validate:plugin": "ARCHIVE=$(npm run --silent package) && ./scripts/validate-plugin.sh \"$ARCHIVE\"",
-    "validate:plugin:local": "./scripts/validate-plugin.sh exasol-datasource.zip",
+    "validate:plugin:local": "./scripts/validate-plugin.sh exasol-exasol-datasource.zip",
     "server": "docker compose up --build",
     "sign": "npx --yes @grafana/sign-plugin@latest"
   },
@@ -72,10 +72,10 @@
   },
   "dependencies": {
     "@emotion/css": "11.13.5",
-    "@grafana/data": "^13.0.2",
+    "@grafana/data": "^13.1.0",
     "@grafana/i18n": "^12.3.2",
-    "@grafana/runtime": "^13.0.2",
-    "@grafana/schema": "^12.4.0",
+    "@grafana/runtime": "^13.1.0",
+    "@grafana/schema": "^13.1.0",
     "@grafana/ui": "^13.0.2",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"

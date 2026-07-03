@@ -1,8 +1,9 @@
 module github.com/exasol/exasol
 
-go 1.26
+go 1.25.7
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/exasol/exasol-driver-go v1.0.16
 	github.com/grafana/grafana-plugin-sdk-go v0.290.0
 	github.com/stretchr/testify v1.11.1
@@ -10,7 +11,6 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect
-	github.com/DATA-DOG/go-sqlmock v1.5.2 // indirect
 	github.com/apache/arrow-go/v18 v18.5.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
