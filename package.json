@@ -81,12 +81,26 @@
     "react-dom": "^18.3.0"
   },
   "overrides": {
+    "@babel/core": "^7.29.6",
+    "brace-expansion@1": "^1.1.13",
+    "brace-expansion@5": "^5.0.6",
+    "dompurify": "^3.4.11",
     "fast-uri": "^3.1.2",
     "flatted": "^3.4.2",
     "js-cookie": "^3.0.7",
+    "js-yaml@3": "^3.15.0",
+    "js-yaml@4": "^4.2.0",
     "lodash": "^4.18.0",
+    "picomatch@2": "^2.3.2",
+    "picomatch@4": "^4.0.4",
+    "postcss": "^8.5.10",
+    "protocol-buffers-schema": "^3.6.1",
+    "qs": "^6.15.2",
+    "react-router@6": "^6.30.4",
     "serialize-javascript": "^7.0.5",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "yaml@1": "^1.10.3",
+    "yaml@2": "^2.8.3"
   },
   "packageManager": "npm@11.8.0"
 }
