@@ -24,10 +24,5 @@ jobs:
           # grafana-plugin-sdk-go v0.292.2 requires go >= 1.26.4 (see go.mod).
           # The action defaults to 1.25, which fails module verification.
           go-version: '1.26.4'
-        # Uncomment to enable plugin signing
-        # (For more info on how to generate the access policy token see https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin#generate-an-access-policy-token)
-        #with:
-        # Make sure to save the token in your repository secrets
-        #policy_token: $
-        # Usage of GRAFANA_API_KEY is deprecated, prefer `policy_token` option above
-        #grafana_token: $
+          # (For more info on how to generate the access policy token see https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin#generate-an-access-policy-token)
+          policy_token: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
