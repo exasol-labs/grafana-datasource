@@ -98,9 +98,10 @@ jobs:
         run: |
           echo "has-e2e=${ENABLE_E2E_IN_CI}" >> $GITHUB_OUTPUT
 
-      - name: Sign plugin
-        run: npm run sign
-        if: ${{ env.GRAFANA_ACCESS_POLICY_TOKEN != '' }}
+      # Signing is disabled: the plugin is distributed unsigned.
+      # - name: Sign plugin
+      #   run: npm run sign
+      #   if: ${{ env.GRAFANA_ACCESS_POLICY_TOKEN != '' }}
 
       - name: Get plugin metadata
         id: metadata
