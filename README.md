@@ -12,13 +12,15 @@ Query Exasol directly from Grafana with native SQL — including Grafana time ma
 
 ## Install
 
-> **Catalog submission is in progress.** Until the plugin is published, install it as an unsigned local plugin (see [DEVELOPMENT.md](./DEVELOPMENT.md#run-grafana-with-the-plugin-in-docker)).
+> **This plugin is unsigned.** It is not distributed through the Grafana catalog and will not be submitted to Grafana for signing.
 
-Once published it will be installable from inside Grafana:
+Install it from a release archive:
 
-1. Open **Connections → Add new connection**.
-2. Search for **Exasol** and click **Install**.
-3. Click **Add new data source** when the install completes.
+1. Download the plugin zip from [Releases](https://github.com/exasol-labs/grafana-datasource/releases) and extract it into Grafana's plugin directory.
+2. Allow the unsigned plugin: `GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=exasol-exasol-datasource`.
+3. Restart Grafana, then add the datasource under **Connections → Data sources → Add data source → Exasol**.
+
+See [DEVELOPMENT.md](./DEVELOPMENT.md#run-grafana-with-the-plugin-in-docker) for running it in Docker.
 
 ## Configure
 
@@ -121,7 +123,7 @@ ORDER BY MEASURE_TIME
 
 ## Plugin signing
 
-This repository builds an unsigned plugin out of the box. Catalog distribution requires a Grafana access policy token; see [DEVELOPMENT.md](./DEVELOPMENT.md#releasing).
+The plugin is built and released unsigned. Grafana must be started with `GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=exasol-exasol-datasource` to load it.
 
 ## Support
 
