@@ -50,3 +50,20 @@ updates:
     commit-message:
       prefix: 'chore(ci)'
     open-pull-requests-limit: 5
+
+  - package-ecosystem: 'gomod'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    # Wait 5 days before updating to help circumvent supply chain attacks
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 5
+    # As in Grafana's template, transitive deps follow grafana-plugin-sdk-go
+    allow:
+      - dependency-name: 'github.com/grafana/grafana-plugin-sdk-go'
+        dependency-type: 'all'
+      - dependency-name: 'github.com/exasol/exasol-driver-go'
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
