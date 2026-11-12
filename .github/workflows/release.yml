@@ -19,7 +19,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: grafana/plugin-actions/build-plugin@build-plugin/v1.2.1
+      - uses: grafana/plugin-actions/build-plugin@build-plugin/v2.0.0
         with:
           # Must be >= the go directive in go.mod (set by grafana-plugin-sdk-go).
           # The action defaults to 1.25, which fails module verification.
